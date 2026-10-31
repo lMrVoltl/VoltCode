@@ -7,7 +7,6 @@ import requests
 
 SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
 
-# Цветовая палитра Claude Code
 R   = "\033[0m"
 B   = "\033[1m"
 DIM = "\033[2m"
@@ -17,18 +16,75 @@ GRN = "\033[38;5;84m"
 YEL = "\033[38;5;220m"
 RED = "\033[38;5;203m"
 
-# 1. Системные инструменты агента для Android
+# Популярные алиасы системных и сторонних приложений Android
+APP_ALIASES = {
+    "заметки": ["notes", "notepad", "keep"],
+    "блокнот": ["notes", "notepad", "keep"],
+    "камера": ["camera"],
+    "галерея": ["gallery", "photos"],
+    "фото": ["gallery", "photos"],
+    "ютуб": ["com.google.android.youtube"],
+    "youtube": ["com.google.android.youtube"],
+    "телеграм": ["org.telegram.messenger", "org.thunderdog.challegram", "ayugram", "exteragram"],
+    "тг": ["org.telegram.messenger", "org.thunderdog.challegram", "ayugram", "exteragram"],
+    "калькулятор": ["calculator"],
+    "настройки": ["com.android.settings"],
+    "проводник": ["filemanager", "documentsui", "files"],
+    "файлы": ["filemanager", "documentsui", "files"],
+    "диктофон": ["soundrecorder", "recorder"],
+    "хром": ["com.android.chrome"],
+    "браузер": ["browser", "chrome"],
+    "часы": ["deskclock", "alarm", "clock"],
+    "будильник": ["deskclock", "alarm", "clock"],
+    "вк": ["com.vkontakte.android"]
+}
+
+def tool_open_app(app_name):
+    query = app_name.lower().strip()
+    patterns = APP_ALIASES.get(query, [query])
+
+    # Получаем список всех установленных пакетов на устройстве
+    try:
+        raw_pkgs = subprocess.check_output("pm list packages", shell=True, text=True, stderr=subprocess.DEVNULL)
+        installed = [p.replace("package:", "").strip() for p in raw_pkgs.splitlines()]
+    except Exception:
+        installed = []
+
+    target_pkg = None
+    # 1. Поиск по алиасам
+    for pat in patterns:
+        for pkg in installed:
+            if pat in pkg.lower():
+                target_pkg = pkg
+                break
+        if target_pkg:
+            break
+
+    # 2. Если не найден в базе, ищем прямое вхождение слова
+    if not target_pkg:
+        for pkg in installed:
+            if query in pkg.lower():
+                target_pkg = pkg
+                break
+
+    if target_pkg:
+        # Запуск приложения через системный Launcher Intent
+        cmd = f"monkey -p {target_pkg} -c android.intent.category.LAUNCHER 1"
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return f"Запущено приложение: {target_pkg}"
+    
+    # 3. Fallback: поиск через системный Intent
+    subprocess.run(f"am start -a android.intent.action.MAIN -c android.intent.category.APP_{query.upper()}", 
+                   shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return f"Попытка запуска через Intent: {query}"
+
 def tool_open_url(target):
     target = target.strip()
-    # Если просят YouTube или известный сервис
-    if "youtu" in target.lower() or target.lower() == "youtube":
-        cmd = "termux-open-url https://www.youtube.com || am start -a android.intent.action.VIEW -d https://www.youtube.com"
-    elif not target.startswith("http://") and not target.startswith("https://"):
-        cmd = f"termux-open-url https://{target} || am start -a android.intent.action.VIEW -d https://{target}"
-    else:
-        cmd = f"termux-open-url {target} || am start -a android.intent.action.VIEW -d {target}"
+    if not target.startswith("http://") and not target.startswith("https://"):
+        target = f"https://{target}"
+    cmd = f"termux-open-url '{target}' || am start -a android.intent.action.VIEW -d '{target}'"
     subprocess.run(cmd, shell=True, stderr=subprocess.DEVNULL)
-    return f"Запуск ссылки/приложения: {target}"
+    return f"Открыта веб-страница: {target}"
 
 def tool_notify(text):
     subprocess.run(["termux-notification", "--title", "VoltCode", "--content", str(text)], stderr=subprocess.DEVNULL)
@@ -47,30 +103,30 @@ def tool_bash(cmd):
         return f"Ошибка: {e}"
 
 TOOLS = {
+    "open_app": tool_open_app,
     "open_url": tool_open_url,
     "notify": tool_notify,
     "vibrate": tool_vibrate,
     "bash": tool_bash
 }
 
-# 2. Промпт для безусловного выполнения действий
 SYSTEM_PROMPT = """Ты — автономный исполнительный агент VoltCode для мобильного Android.
-Если пользователь просит открыть сайт, сервис, запустить приложение, отправить уведомление, завибрировать или выполнить команду в терминале — НЕ ПИШИ ИНСТРУКЦИЙ!
-Ответь СТРОГО одной строкой JSON для исполнения функции:
-{"action": "имя_действия", "arg": "значение"}
+Если пользователь просит открыть приложение или запустить программу (заметки, камера, ютуб, телеграм, файлы и т.д.) — НЕ ПИШИ ИНСТРУКЦИЙ!
+Ответь СТРОГО одной строкой JSON:
+{"action": "open_app", "arg": "название_приложения"}
 
 Доступные действия:
-- "open_url": открыть приложение или сайт (напр: "youtube", "https://t.me", "google.com")
-- "notify": показать шторку уведомления (напр: "Напоминание")
-- "vibrate": вибрировать (напр: "300")
-- "bash": выполнить системную команду в консоли (напр: "ls -la", "df -h", "date")
+- "open_app": открыть установленное Android-приложение (напр: "заметки", "ютуб", "камера", "телеграм", "калькулятор", "галерея")
+- "open_url": открыть именно веб-сайт в браузере (напр: "github.com", "google.com")
+- "notify": показать уведомление (напр: "Привет!")
+- "vibrate": завибрировать (напр: "300")
+- "bash": выполнить команду Linux в Termux (напр: "ls", "df -h", "date")
 
-Если пользователь просто общается или задает вопрос, отвечай коротко обычным текстом на русском языке."""
+Если пользователь просто общается, отвечай обычным текстом на русском языке."""
 
 def print_banner():
     os.system("clear")
-    # Компактный маскот-кот строго до 38 колонок (без переносов на телефоне)
-    print(f"""{IND}  /\_/\  {CYN}{B}VoltCode Agent{R}
+    print(f"""{IND}  /\\_/\\  {CYN}{B}VoltCode Agent{R}
 {IND} ( o.o ) {DIM}Snapdragon 7 Gen 1 (Gold){R}
 {IND}  > ^ <  {GRN}● Ready{R} {DIM}| :8080 Fast Core{R}
 {IND}───────────────────────────────────────{R}""")
@@ -112,13 +168,10 @@ def main():
             tokens = r.get("usage", {}).get("completion_tokens", 0)
             tps = (tokens / dt) if dt > 0 else 0
 
-            # Очищаем строку ожидания
             print(" " * 38, end="\r")
 
-            # Пробуем выполнить как действие
             executed = False
             try:
-                # Извлекаем JSON даже если вокруг есть лишний текст
                 json_str = raw_reply
                 if "{" in json_str and "}" in json_str:
                     json_str = json_str[json_str.find("{"):json_str.rfind("}")+1]
@@ -135,13 +188,11 @@ def main():
                 executed = False
 
             if not executed:
-                # Обычный текстовый ответ в аккуратной рамке
                 print(f"{IND}╭─ Ответ{R}")
                 for line in raw_reply.split("\n"):
                     print(f"{IND}│{R} {line}")
                 print(f"{IND}╰──────────────────────────────────────{R}")
 
-            # Метрики
             print(f"{DIM}⚡ {tps:.1f} т/с | ⏱ {dt:.2f}s | {tokens} токенов{R}")
 
         except KeyboardInterrupt:
