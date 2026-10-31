@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VoltCode Studio</title>
+  <style>
+    :root {
+      --bg: #090b10;
+      --card-bg: rgba(18, 22, 31, 0.85);
+      --border: rgba(255, 255, 255, 0.1);
+      --accent-grad: linear-gradient(135deg, #6366f1 0%, #06b6d4 100%);
+      --accent-glow: rgba(99, 102, 241, 0.25);
+      --text: #f8fafc;
+      --text-dim: #94a3b8;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      position: relative;
+    }
+
+    body::before {
+      content: "";
+      position: absolute;
+      top: -60px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      height: 240px;
+      background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+      filter: blur(60px);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    header {
+      z-index: 10;
+      padding: 10px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(9, 11, 16, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+      font-size: 1.05rem;
+      background: var(--accent-grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mode-select {
+      background: rgba(255, 255, 255, 0.08);
+      color: #38bdf8;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      outline: none;
+    }
+
+    .btn-help {
+      background: rgba(99, 102, 241, 0.2);
+      border: 1px solid rgba(99, 102, 241, 0.5);
+      color: #a5b4fc;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      z-index: 1;
+      padding-bottom: 110px;
+    }
+
+    .msg-wrap {
+      display: flex;
+      flex-direction: column;
+      max-width: 90%;
+    }
+    .msg-wrap.user { align-self: flex-end; }
+    .msg-wrap.bot { align-self: flex-start; }
+
+    .msg {
+      padding: 12px 15px;
+      border-radius: 14px;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      word-break: break-word;
+    }
+    .user .msg {
+      background: var(--accent-grad);
+      color: #fff;
+      border-bottom-right-radius: 2px;
+    }
+    .bot .msg {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-bottom-left-radius: 2px;
+    }
+
+    .telemetry {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+      padding: 0 4px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+    .telemetry span {
+      background: rgba(255, 255, 255, 0.05);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .telemetry .highlight { color: #38bdf8; }
+
+    .preview-thumb {
+      max-width: 160px;
+      max-height: 160px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(9, 11, 16, 0.95);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid var(--border);
+      padding: 8px 12px 14px 12px;
+      z-index: 20;
+    }
+
+    .image-preview-box {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 4px 8px;
+      border-radius: 6px;
+      width: fit-content;
+    }
+    .image-preview-box img {
+      width: 32px;
+      height: 32px;
+      object-fit: cover;
+      border-radius: 4px;
+    }
+    .image-preview-box span { font-size: 0.75rem; color: #38bdf8; }
+    .btn-del-img { background: none; border: none; color: #ef4444; font-size: 1rem; cursor: pointer; }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .action-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 1.1rem;
+      flex-shrink: 0;
+    }
+
+    #user-input {
+      flex: 1;
+      height: 42px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 12px;
+      color: #fff;
+      font-size: 0.95rem;
+      outline: none;
+    }
+    #user-input:focus { border-color: #38bdf8; }
+
+    .btn-send {
+      width: 42px;
+      height: 42px;
+      background: var(--accent-grad);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      padding: 0 4px;
+    }
+
+    /* Модальное окно Инструкции */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+      padding: 16px;
+    }
+    .modal-card {
+      background: #11151f;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      max-width: 440px;
+      width: 100%;
+      padding: 18px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .modal-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .modal-body {
+      font-size: 0.85rem;
+      line-height: 1.5;
+      color: #cbd5e1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .code-badge {
+      background: rgba(99, 102, 241, 0.15);
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      color: #38bdf8;
+      font-family: monospace;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.9rem;
+    }
+    .btn-close-modal {
+      background: var(--accent-grad);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-weight: 600;
+      width: 100%;
+      margin-top: 14px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span>🐱 VoltCode</span>
+    </div>
+    <div class="nav-right">
+      <select id="run-mode" class="mode-select">
+        <option value="optivolt">⚡ OptiVolt (Auto)</option>
+        <option value="fast">🚀 Fast Core (1.5B)</option>
+        <option value="vision">👁 Vision Core (2B)</option>
+      </select>
+      <button class="btn-help" onclick="toggleModal(true)">📖 Инструкция</button>
+    </div>
+  </header>
+
+  <div id="chat-container">
+    <div class="msg-wrap bot">
+      <div class="msg">
+        Система OptiVolt готова к работе. Текст маршрутизируется в Fast Core (1.5B), фото — в оптимизированный Vision Core (2B).
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <div class="image-preview-box" id="preview-box">
+      <img id="thumb-img" src="" alt="img">
+      <span id="img-meta">448px (Ultra-Fast)</span>
+      <button class="btn-del-img" onclick="removeImage()">✕</button>
+    </div>
+
+    <div class="input-row">
+      <input type="file" id="photo-file" accept="image/*" style="display:none">
+      <button class="action-btn" title="Прикрепить фото" onclick="document.getElementById('photo-file').click()">📷</button>
+      <button class="action-btn" title="Очистить чат" onclick="clearChat()">🗑</button>
+      <input type="text" id="user-input" placeholder="Задайте вопрос..." autocomplete="off">
+      <button class="btn-send" id="send-btn" onclick="sendMsg()">➤</button>
+    </div>
+
+    <div class="stats-row">
+      <span id="stat-latency">Отклик: —</span>
+      <span id="stat-speed">Скорость: —</span>
+    </div>
+  </div>
+
+  <!-- Модальное окно с инструкцией -->
+  <div class="modal-overlay" id="help-modal">
+    <div class="modal-card">
+      <div class="modal-title">
+        <span>📖 Как пользоваться VoltCode</span>
+        <span style="cursor:pointer;" onclick="toggleModal(false)">✕</span>
+      </div>
+      <div class="modal-body">
+        <p>• <b>Консольный агент (Claude-Style):</b><br>
+        Открой Termux и введи команду <span class="code-badge">voltcode</span> — откроется терминальный агент с маскотом-котиком и замером скорости в реальном времени.</p>
+        
+        <p>• <b>Режим OptiVolt (Auto):</b><br>
+        Если отправлен обычный текст — отвечает <b>Fast Core 1.5B</b> за доли секунды. Если прикреплена фотография — запрос автоматически направляется в <b>Vision Core 2B</b>.</p>
+        
+        <p>• <b>Оптимизация Snapdragon:</b><br>
+        Все фото автоматически сжимаются до 448 px перед обработкой, снижая нагрузку на процессор Cortex-A710 и сохраняя заряд аккумулятора.</p>
+      </div>
+      <button class="btn-close-modal" onclick="toggleModal(false)">Понятно</button>
+    </div>
+  </div>
+
+  <script>
+    let activeImageBase64 = null;
+
+    function toggleModal(show) {
+      document.getElementById('help-modal').style.display = show ? 'flex' : 'none';
+    }
+
+    document.getElementById('photo-file').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxDim = 448;
+          let w = img.width, h = img.height;
+          if (w > h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+          else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          activeImageBase64 = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+          document.getElementById('thumb-img').src = canvas.toDataURL('image/jpeg', 0.85);
+          document.getElementById('preview-box').style.display = 'flex';
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    function removeImage() {
+      activeImageBase64 = null;
+      document.getElementById('photo-file').value = '';
+      document.getElementById('preview-box').style.display = 'none';
+    }
+
+    function clearChat() {
+      document.getElementById('chat-container').innerHTML = `
+        <div class="msg-wrap bot"><div class="msg">История очищена. Память освобождена.</div></div>
+      `;
+    }
+
+    function addMessage(content, sender, imageBase64 = null) {
+      const container = document.getElementById('chat-container');
+      const wrap = document.createElement('div');
+      wrap.className = `msg-wrap ${sender}`;
+
+      if (imageBase64) {
+        const thumb = document.createElement('img');
+        thumb.src = `data:image/jpeg;base64,${imageBase64}`;
+        thumb.className = 'preview-thumb';
+        wrap.appendChild(thumb);
+      }
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'msg';
+      msgDiv.textContent = content;
+      wrap.appendChild(msgDiv);
+
+      const telem = document.createElement('div');
+      telem.className = 'telemetry';
+      wrap.appendChild(telem);
+
+      container.appendChild(wrap);
+      container.scrollTop = container.scrollHeight;
+      return { msgDiv, telem };
+    }
+
+    async function sendMsg() {
+      const input = document.getElementById('user-input');
+      const text = input.value.trim();
+      if (!text && !activeImageBase64) return;
+
+      const currentImg = activeImageBase64;
+      const mode = document.getElementById('run-mode').value;
+      const hasImage = !!currentImg;
+
+      addMessage(text || '[Анализ изображения]', 'user', currentImg);
+      input.value = '';
+      removeImage();
+
+      const messages = [];
+      if (hasImage) {
+        messages.push({
+          role: "system",
+          content: "Ты — мультимодальный ассистент с функцией компьютерного зрения. Внимательно изучи прикрепленное фото и подробно опиши его на русском языке."
+        });
+        messages.push({
+          role: "user",
+          content: [
+            { type: "text", text: text || "Что изображено на этом фото?" },
+            { type: "image_url", image_url: { url: `data:image/jpeg;base64,${currentImg}` } }
+          ]
+        });
+      } else {
+        messages.push({
+          role: "system",
+          content: "Ты полезный русскоязычный ИИ-ассистент VoltCode. Отвечай кратко и емко."
+        });
+        messages.push({ role: "user", content: text });
+      }
+
+      const activeCoreName = (mode === 'fast' || (!hasImage && mode === 'optivolt')) ? "Fast Core 1.5B" : "Vision Core 2B";
+      const { msgDiv, telem } = addMessage(`Вычисление [${activeCoreName}]...`, "bot");
+
+      const t0 = performance.now();
+
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: mode,
+            has_image: hasImage,
+            payload: {
+              messages: messages,
+              temperature: hasImage ? 0.2 : 0.3,
+              max_tokens: 512
+            }
+          })
+        });
+
+        const data = await res.json();
+        const durationSec = (performance.now() - t0) / 1000;
+        const reply = data.choices[0].message.content;
+        msgDiv.textContent = reply;
+
+        let compTokens = data.usage?.completion_tokens || 0;
+        let speed = (compTokens / durationSec).toFixed(2);
+        if (data.timings && data.timings.predicted_per_second) {
+          speed = data.timings.predicted_per_second.toFixed(2);
+        }
+
+        telem.innerHTML = `
+          <span>⚡ <b class="highlight">${speed}</b> ток/сек</span>
+          <span>📦 ${compTokens} ток.</span>
+          <span>⏱ ${durationSec.toFixed(2)}s</span>
+          <span>🎯 ${activeCoreName}</span>
+        `;
+
+        document.getElementById('stat-latency').textContent = `Отклик: ${durationSec.toFixed(2)}s`;
+        document.getElementById('stat-speed').textContent = `Скорость: ${speed} ток/сек`;
+
+      } catch (e) {
+        msgDiv.textContent = "Сбой инференса. Убедись, что запущен скрипт ~/launch.sh.";
+        telem.textContent = "Ошибка";
+      }
+    }
+
+    document.getElementById('user-input').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') sendMsg();
+    });
+  </script>
+</body>
+</html>
