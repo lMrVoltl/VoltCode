@@ -2,10 +2,12 @@ import os
 import sys
 import time
 import json
+import base64
 import subprocess
 import requests
 
-SERVER_URL = "http://127.0.0.1:8080/v1/chat/completions"
+FAST_URL = "http://127.0.0.1:8080/v1/chat/completions"
+VISION_URL = "http://127.0.0.1:8081/v1/chat/completions"
 
 R   = "\033[0m"
 B   = "\033[1m"
@@ -16,67 +18,120 @@ GRN = "\033[38;5;84m"
 YEL = "\033[38;5;220m"
 RED = "\033[38;5;203m"
 
-# Популярные алиасы системных и сторонних приложений Android
-APP_ALIASES = {
-    "заметки": ["notes", "notepad", "keep"],
-    "блокнот": ["notes", "notepad", "keep"],
-    "камера": ["camera"],
-    "галерея": ["gallery", "photos"],
-    "фото": ["gallery", "photos"],
+# Расширенная база пакетов Android (включая Honor MagicOS, Xiaomi, Samsung, AOSP)
+APP_DB = {
+    "заметки": ["com.hihonor.notepad", "com.huawei.notepad", "com.google.android.keep", "com.miui.notes", "com.samsung.android.app.notes"],
+    "блокнот": ["com.hihonor.notepad", "com.huawei.notepad", "com.google.android.keep"],
+    "камера": ["com.hihonor.camera", "com.huawei.camera", "com.android.camera", "com.google.android.GoogleCamera"],
+    "галерея": ["com.hihonor.photos", "com.huawei.photos", "com.google.android.apps.photos", "com.miui.gallery"],
+    "фото": ["com.hihonor.photos", "com.google.android.apps.photos"],
     "ютуб": ["com.google.android.youtube"],
     "youtube": ["com.google.android.youtube"],
-    "телеграм": ["org.telegram.messenger", "org.thunderdog.challegram", "ayugram", "exteragram"],
-    "тг": ["org.telegram.messenger", "org.thunderdog.challegram", "ayugram", "exteragram"],
-    "калькулятор": ["calculator"],
-    "настройки": ["com.android.settings"],
-    "проводник": ["filemanager", "documentsui", "files"],
-    "файлы": ["filemanager", "documentsui", "files"],
-    "диктофон": ["soundrecorder", "recorder"],
+    "тг": ["org.telegram.messenger", "org.thunderdog.challegram", "com.exteragram", "com.ayugram"],
+    "телеграм": ["org.telegram.messenger", "org.thunderdog.challegram", "com.exteragram", "com.ayugram"],
+    "калькулятор": ["com.google.android.calculator", "com.hihonor.calculator", "com.miui.calculator"],
+    "проводник": ["com.hihonor.filemanager", "com.huawei.hidisk", "com.google.android.documentsui"],
+    "файлы": ["com.hihonor.filemanager", "com.google.android.documentsui"],
     "хром": ["com.android.chrome"],
-    "браузер": ["browser", "chrome"],
-    "часы": ["deskclock", "alarm", "clock"],
-    "будильник": ["deskclock", "alarm", "clock"],
-    "вк": ["com.vkontakte.android"]
+    "браузер": ["com.android.chrome", "org.mozilla.firefox", "com.yandex.browser"],
+    "настройки": ["com.android.settings"]
 }
 
+# 1. Запуск Android-приложений
 def tool_open_app(app_name):
     query = app_name.lower().strip()
-    patterns = APP_ALIASES.get(query, [query])
-
-    # Получаем список всех установленных пакетов на устройстве
+    
+    # Поиск прямого пакета из базы
+    candidates = APP_DB.get(query, [])
+    
+    # Получение списка реальных установленных пакетов через cmd/pm
     try:
-        raw_pkgs = subprocess.check_output("pm list packages", shell=True, text=True, stderr=subprocess.DEVNULL)
-        installed = [p.replace("package:", "").strip() for p in raw_pkgs.splitlines()]
+        raw = subprocess.check_output("cmd package list packages || pm list packages", shell=True, text=True, stderr=subprocess.DEVNULL)
+        installed = [p.replace("package:", "").strip() for p in raw.splitlines()]
     except Exception:
         installed = []
 
-    target_pkg = None
-    # 1. Поиск по алиасам
-    for pat in patterns:
-        for pkg in installed:
-            if pat in pkg.lower():
-                target_pkg = pkg
-                break
-        if target_pkg:
-            break
+    # 1. Поиск в установленных по нашей базе
+    for pkg in candidates:
+        if pkg in installed:
+            subprocess.run(f"monkey -p {pkg} -c android.intent.category.LAUNCHER 1", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return f"Запущено приложение: {pkg}"
 
-    # 2. Если не найден в базе, ищем прямое вхождение слова
-    if not target_pkg:
-        for pkg in installed:
-            if query in pkg.lower():
-                target_pkg = pkg
-                break
+    # 2. Нечеткий поиск по совпадению подстроки
+    for pkg in installed:
+        if query in pkg.lower():
+            subprocess.run(f"monkey -p {pkg} -c android.intent.category.LAUNCHER 1", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return f"Запущено найденное приложение: {pkg}"
 
-    if target_pkg:
-        # Запуск приложения через системный Launcher Intent
-        cmd = f"monkey -p {target_pkg} -c android.intent.category.LAUNCHER 1"
-        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return f"Запущено приложение: {target_pkg}"
+    # 3. Запуск через стандартные системные Intent категории Android
+    intent_map = {
+        "заметки": "android.intent.action.CREATE_NOTE",
+        "камера": "android.media.action.IMAGE_CAPTURE",
+        "калькулятор": "android.intent.category.APP_CALCULATOR",
+        "галерея": "android.intent.category.APP_GALLERY",
+        "браузер": "android.intent.category.APP_BROWSER"
+    }
     
-    # 3. Fallback: поиск через системный Intent
-    subprocess.run(f"am start -a android.intent.action.MAIN -c android.intent.category.APP_{query.upper()}", 
-                   shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return f"Попытка запуска через Intent: {query}"
+    if query in intent_map:
+        val = intent_map[query]
+        if "action" in val:
+            subprocess.run(f"am start -a {val}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(f"am start -a android.intent.action.MAIN -c {val}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return f"Запущено через системный Intent ({query})"
+
+    return f"Приложение '{app_name}' не найдено среди установленных пакетов."
+
+# 2. Получение и зрительный анализ происходящего на экране (Vision Core)
+def tool_see_screen(question="Что сейчас отображается на экране?"):
+    scr_path = "/data/data/com.termux/files/home/screen.png"
+    scr_jpg = "/data/data/com.termux/files/home/screen_opt.jpg"
+    
+    # Попытка сделать скриншот через screencap или adb
+    cmd = f"screencap -p {scr_path} 2>/dev/null || su -c screencap -p {scr_path} 2>/dev/null || adb exec-out screencap -p > {scr_path} 2>/dev/null"
+    subprocess.run(cmd, shell=True)
+
+    if not os.path.exists(scr_path) or os.path.getsize(scr_path) == 0:
+        return "Не удалось захватить экран. Нужен доступ screencap/adb или отладка по Wi-Fi."
+
+    # Быстрый ресайз средствами Python до 448 px (чтобы Vision Core не тормозил)
+    try:
+        from PIL import Image
+        img = Image.open(scr_path)
+        img.thumbnail((448, 448))
+        img.convert("RGB").save(scr_jpg, "JPEG", quality=85)
+    except Exception:
+        # Если PIL нет — отправляем напрямую
+        scr_jpg = scr_path
+
+    with open(scr_jpg, "rb") as f:
+        img_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    # Запрос к зрительному ядру Qwen2-VL на порт 8081
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": "Ты зрительный модуль агента VoltCode. Опиши кратко, что открыто на экране устройства: какое приложение, кнопки или текст."
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": question},
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
+                ]
+            }
+        ],
+        "temperature": 0.2,
+        "max_tokens": 256
+    }
+
+    try:
+        res = requests.post(VISION_URL, json=payload, timeout=40).json()
+        desc = res["choices"][0]["message"]["content"].strip()
+        return desc
+    except Exception as e:
+        return f"Ошибка Vision Core (:8081): {e}"
 
 def tool_open_url(target):
     target = target.strip()
@@ -84,11 +139,11 @@ def tool_open_url(target):
         target = f"https://{target}"
     cmd = f"termux-open-url '{target}' || am start -a android.intent.action.VIEW -d '{target}'"
     subprocess.run(cmd, shell=True, stderr=subprocess.DEVNULL)
-    return f"Открыта веб-страница: {target}"
+    return f"Открыта ссылка: {target}"
 
 def tool_notify(text):
     subprocess.run(["termux-notification", "--title", "VoltCode", "--content", str(text)], stderr=subprocess.DEVNULL)
-    return f"Уведомление отправлено: {text}"
+    return f"Уведомление: {text}"
 
 def tool_vibrate(ms=300):
     subprocess.run(["termux-vibrate", "-d", str(ms)], stderr=subprocess.DEVNULL)
@@ -104,6 +159,7 @@ def tool_bash(cmd):
 
 TOOLS = {
     "open_app": tool_open_app,
+    "see_screen": tool_see_screen,
     "open_url": tool_open_url,
     "notify": tool_notify,
     "vibrate": tool_vibrate,
@@ -111,24 +167,27 @@ TOOLS = {
 }
 
 SYSTEM_PROMPT = """Ты — автономный исполнительный агент VoltCode для мобильного Android.
-Если пользователь просит открыть приложение или запустить программу (заметки, камера, ютуб, телеграм, файлы и т.д.) — НЕ ПИШИ ИНСТРУКЦИЙ!
-Ответь СТРОГО одной строкой JSON:
-{"action": "open_app", "arg": "название_приложения"}
+Если пользователь просит:
+1. Запустить приложение (заметки, камера, ютуб, телеграм, файлы и т.д.) — вызови open_app.
+2. Посмотреть экран / прочитать что на дисплее / понять что происходит — вызови see_screen.
+3. Открыть сайт — вызови open_url.
+4. Выполнить команду терминала — вызови bash.
 
-Доступные действия:
-- "open_app": открыть установленное Android-приложение (напр: "заметки", "ютуб", "камера", "телеграм", "калькулятор", "галерея")
-- "open_url": открыть именно веб-сайт в браузере (напр: "github.com", "google.com")
-- "notify": показать уведомление (напр: "Привет!")
-- "vibrate": завибрировать (напр: "300")
-- "bash": выполнить команду Linux в Termux (напр: "ls", "df -h", "date")
+Строго формат ответа:
+{"action": "имя_действия", "arg": "параметр"}
 
-Если пользователь просто общается, отвечай обычным текстом на русском языке."""
+Примеры:
+- "открой заметки" -> {"action": "open_app", "arg": "заметки"}
+- "что на экране?" -> {"action": "see_screen", "arg": "Что сейчас открыто?"}
+- "посмотри экран" -> {"action": "see_screen", "arg": "Опиши экран"}
+
+Если это обычная беседа — отвечай текстом без JSON."""
 
 def print_banner():
     os.system("clear")
     print(f"""{IND}  /\\_/\\  {CYN}{B}VoltCode Agent{R}
 {IND} ( o.o ) {DIM}Snapdragon 7 Gen 1 (Gold){R}
-{IND}  > ^ <  {GRN}● Ready{R} {DIM}| :8080 Fast Core{R}
+{IND}  > ^ <  {GRN}● Ready{R} {DIM}| :8080 Fast + :8081 Vision{R}
 {IND}───────────────────────────────────────{R}""")
 
 def main():
@@ -145,7 +204,7 @@ def main():
                 print_banner()
                 continue
 
-            print(f"{DIM}● Обработка на Cortex-A710...{R}", end="\r")
+            print(f"{DIM}● Обработка...{R}", end="\r")
             t0 = time.time()
 
             payload = {
@@ -158,9 +217,9 @@ def main():
             }
 
             try:
-                r = requests.post(SERVER_URL, json=payload, timeout=60).json()
+                r = requests.post(FAST_URL, json=payload, timeout=40).json()
             except Exception:
-                print(f"\r{RED}✗ Ошибка: llama-server не доступен на 8080.{R}")
+                print(f"\r{RED}✗ Fast Core не запущен на 8080.{R}")
                 continue
 
             dt = time.time() - t0
@@ -182,7 +241,7 @@ def main():
                 if action in TOOLS:
                     print(f"{GRN}⚡ Выполняю:{R} {CYN}{action}{R}({YEL}\"{arg}\"{R})")
                     result = TOOLS[action](arg)
-                    print(f"{DIM}└─ {result}{R}")
+                    print(f"{IND}👁 Результат:{R}\n{result}")
                     executed = True
             except Exception:
                 executed = False
